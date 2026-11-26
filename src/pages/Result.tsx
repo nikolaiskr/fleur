@@ -7,6 +7,7 @@ import BouquetSVG from '@/components/BouquetSVG'
 import { FLOWER_BY_ID } from '@/lib/catalog'
 import { composeBouquet } from '@/lib/deepseek'
 import { checkRateLimit, loadBouquet, saveBouquet } from '@/lib/storage'
+import { toGenitive } from '@/lib/names'
 import type { SavedBouquet } from '@/types'
 
 export default function Result() {
@@ -121,7 +122,7 @@ export default function Result() {
           ref={cardRef}
           className="aspect-[148/210] w-full overflow-hidden rounded-[22px] border border-[#EDE2D3] bg-[#FDFAF5] shadow-[0_30px_70px_-30px_rgba(120,86,60,0.45)]">
           <div className="flex h-full flex-col items-center px-6 py-5">
-            <div className="w-full max-w-[240px] flex-1">
+            <div className="w-full max-w-[290px] flex-1">
               <BouquetSVG
                 flowers={composition.flowers}
                 palette={composition.palette}
@@ -130,7 +131,7 @@ export default function Result() {
               />
             </div>
             <h1 className="font-display mt-1 text-center text-2xl text-[#3E352C]">
-              Для {form.name}
+              Для {toGenitive(form.name)}
             </h1>
             <p className="mt-1.5 text-center text-[11px] leading-relaxed text-[#8A7B68]">
               {composition.vibe_summary}

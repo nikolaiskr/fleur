@@ -1,7 +1,8 @@
 // <BouquetSVG> — программный конструктор букета.
-// Цветы собираются из SVG-компонентов: зелень фоном, крупные цветы
-// в центре, мелкие по краям; внизу — крафт-обёртка. Положение каждого
-// цветка детерминировано seed'ом — букет стабилен при перерендере.
+// Пышный «купол» цветов над мягкой крафт-обёрткой: зелень выглядывает
+// по краям, крупные цветы в центре, мелкие по краям; порядок отрисовки —
+// художественный (нижние поверх верхних). Положение каждого цветка
+// детерминировано seed'ом — букет стабилен при перерендере.
 
 import { motion } from 'framer-motion'
 import type { CompositionFlower, CompositionStyle } from '@/types'
@@ -24,28 +25,24 @@ interface Instance {
   y: number
   scale: number
   rotate: number
-  layer: number
   greenery: boolean
-  stemTop?: { x: number; y: number }
 }
 
-const BIND = { x: 200, y: 305 }
-const CENTER_Y = 195
+const DOME = { x: 200, y: 168 }
+const BIND = { x: 200, y: 302 }
 
 const STYLE_SPREAD: Record<CompositionStyle, number> = {
-  компактный: 0.72,
-  раскидистый: 1.12,
+  компактный: 0.74,
+  раскидистый: 1.1,
   каскадный: 1.0,
-  моно: 0.85,
-  полевой: 1.25,
+  моно: 0.82,
+  полевой: 1.18,
 }
 
 export default function BouquetSVG({ flowers, palette, style, seed, animated = true }: Props) {
   const rng = rngFrom(`bouquet:${seed}`)
   const spread = STYLE_SPREAD[style] ?? 1
 
-  // Разворачиваем количество в отдельные стебли
-  const instances: Instance[] = []
   const all = flowers.flatMap((cf) => {
     const f = FLOWER_BY_ID[cf.flower_id]
     if (!f) return []
@@ -54,52 +51,68 @@ export default function BouquetSVG({ flowers, palette, style, seed, animated = t
 
   const greenery = all.filter((f) => f.size === 'greenery')
   const blooms = all.filter((f) => f.size !== 'greenery')
-  const order = { large: 0, medium: 1, small: 2 } as const
-  blooms.sort((a, b) => order[a.size as keyof typeof order] - order[b.size as keyof typeof order])
+  // Порядок раздачи позиций: крупные → средние → мелкие
+  const rankOf = { large: 0, medium: 1, small: 2 } as const
+  blooms.sort((a, b) => rankOf[a.size as keyof typeof rankOf] - rankOf[b.size as keyof typeof rankOf])
 
-  // Зелень: широкий веер позади
-  greenery.forEach((f, i) => {
-    const a = -Math.PI / 2 + (i - (greenery.length - 1) / 2) * (0.5 + 0.14 * spread)
-    const dist = range(rng, 100, 148) * spread
-    instances.push({
+  const greenInstances: Instance[] = greenery.map((f, i) => {
+    // Веер зелени за куполом: точки крепления вдоль края обёртки, кончики наружу
+    const a = (-170 + (160 / Math.max(1, greenery.length - 1)) * i + range(rng, -9, 9)) * (Math.PI / 180)
+    return {
       key: `g-${f.id}-${i}`,
       flowerId: f.id,
-      x: BIND.x + Math.cos(a) * dist * 0.75,
-      y: BIND.y - Math.abs(Math.sin(a)) * dist * 0.35 - range(rng, 18, 60),
-      scale: range(rng, 0.85, 1.15),
-      rotate: (a + Math.PI / 2) * (180 / Math.PI) * 0.8,
-      layer: 0,
+      x: BIND.x + Math.cos(a) * 118 * spread,
+      y: 268 + range(rng, -8, 14),
+      scale: range(rng, 0.95, 1.25),
+      rotate: (Math.cos(a)) * 42 + range(rng, -8, 8),
       greenery: true,
-    })
+    }
   })
 
-  // Цветы: золотой угол, крупные — к центру
-  blooms.forEach((f, i) => {
-    const rank = f.size === 'large' ? 0 : f.size === 'medium' ? 1 : 2
+  const bloomInstances: Instance[] = blooms.map((f, i) => {
+    const rank = rankOf[f.size as keyof typeof rankOf]
     const baseR =
-      f.size === 'large' ? range(rng, 8, 42) :
-      f.size === 'medium' ? range(rng, 38, 88) :
-      range(rng, 74, 128)
+      f.size === 'large' ? range(rng, 4, 46) :
+      f.size === 'medium' ? range(rng, 38, 92) :
+      range(rng, 78, 130)
     const r = baseR * spread
-    const angle = i * 137.508 + rank * 60 + range(rng, -14, 14)
+    const angle = i * 137.508 + rank * 55 + range(rng, -16, 16)
     const rad = (angle * Math.PI) / 180
-    const cascadeDrop = style === 'каскадный' && rank === 2 ? range(rng, 20, 60) : 0
-    const wildLift = style === 'полевой' ? range(rng, -26, 8) : 0
-    const x = 200 + Math.cos(rad) * r * 1.06
-    const y = CENTER_Y + Math.sin(rad) * r * 0.78 + cascadeDrop + wildLift - rank * 6
-    const baseScale = f.size === 'large' ? 1.05 : f.size === 'medium' ? 0.82 : 0.62
-    instances.push({
+    const drop =
+      style === 'каскадный' && rank === 2 ? range(rng, 26, 66) :
+      style === 'полевой' ? range(rng, -20, 16) :
+      range(rng, -4, 10)
+    const x = DOME.x + Math.cos(rad) * r * 1.06
+    const y = DOME.y + Math.sin(rad) * r * 0.72 + drop
+    const baseScale = f.size === 'large' ? 1.45 : f.size === 'medium' ? 1.15 : 0.9
+    return {
       key: `b-${f.id}-${i}`,
       flowerId: f.id,
-      x, y,
-      scale: baseScale * range(rng, 0.9, 1.12),
-      rotate: range(rng, -24, 24),
-      layer: 2 - rank, // крупные поверх
+      x: Math.min(372, Math.max(28, x)),
+      y: Math.min(292, Math.max(30, y)),
+      scale: baseScale * range(rng, 0.92, 1.1),
+      rotate: range(rng, -18, 18),
       greenery: false,
-    })
+    }
   })
 
-  // Палитра AI применяется к «нейтральным» цветам
+  // Художественный порядок: нижние цветы поверх верхних
+  bloomInstances.sort((a, b) => a.y - b.y)
+
+  // Листья-подложка вокруг купола — заполняют промежутки между цветами
+  const leafCount = 8
+  const leaves = Array.from({ length: leafCount }, (_, i) => {
+    const a = ((-165 + (150 / (leafCount - 1)) * i) * Math.PI) / 180 + range(rng, -0.06, 0.06)
+    const r = range(rng, 118, 142) * spread
+    return {
+      x: DOME.x + Math.cos(a) * r * 1.08,
+      y: DOME.y + Math.sin(a) * r * 0.74 + 14,
+      rotate: (a * 180) / Math.PI + 90,
+      scale: range(rng, 0.85, 1.15),
+      fill: i % 2 ? '#8FA98F' : '#7B967B',
+    }
+  })
+
   const resolveColors = (flowerId: string, i: number): string[] => {
     const f = FLOWER_BY_ID[flowerId]
     if (!f) return ['#E8AEB7', '#D48C99']
@@ -109,23 +122,21 @@ export default function BouquetSVG({ flowers, palette, style, seed, animated = t
     return f.colors
   }
 
-  const sorted = [...instances].sort((a, b) => a.layer - b.layer)
-
   return (
-    <svg viewBox="0 0 400 520" className="h-auto w-full" role="img" aria-label="Собранный букет">
+    <svg viewBox="0 0 400 470" className="h-auto w-full" role="img" aria-label="Собранный букет">
       <defs>
         <linearGradient id="kraft" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#D9BC8A" />
-          <stop offset="100%" stopColor="#C4A271" />
+          <stop offset="0%" stopColor="#DCC091" />
+          <stop offset="100%" stopColor="#C6A473" />
         </linearGradient>
-        <linearGradient id="kraftFold" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#CDAF7C" />
-          <stop offset="100%" stopColor="#B99766" />
+        <linearGradient id="kraftLip" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#E9D3A8" />
+          <stop offset="100%" stopColor="#D8BC8C" />
         </linearGradient>
       </defs>
 
-      {/* зелень и стебли — за обёрткой сверху */}
-      {sorted.filter((i) => i.greenery).map((inst, idx) => {
+      {/* зелень за куполом */}
+      {greenInstances.map((inst, idx) => {
         const f = FLOWER_BY_ID[inst.flowerId]
         const Shape = SHAPES[f.shape]
         return (
@@ -134,7 +145,7 @@ export default function BouquetSVG({ flowers, palette, style, seed, animated = t
               style={{ transformBox: 'fill-box', transformOrigin: 'bottom center' }}
               initial={animated ? { scale: 0, opacity: 0 } : false}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.15 + idx * 0.05, type: 'spring', stiffness: 120, damping: 14 }}
+              transition={{ delay: 0.12 + idx * 0.05, type: 'spring', stiffness: 120, damping: 14 }}
             >
               <Shape palette={f.colors} seed={inst.key} />
             </motion.g>
@@ -142,27 +153,52 @@ export default function BouquetSVG({ flowers, palette, style, seed, animated = t
         )
       })}
 
-      {/* стебли цветов */}
-      {sorted.filter((i) => !i.greenery).map((inst) => (
-        <path key={`s-${inst.key}`}
-          d={`M${inst.x},${inst.y + 8} Q ${(inst.x + BIND.x) / 2 + (inst.x - 200) * 0.12},${(inst.y + BIND.y) / 2} ${BIND.x + (inst.x - 200) * 0.12},${BIND.y}`}
-          stroke="#5E8A5A" strokeWidth={2.6} fill="none" opacity={0.9} />
+      {/* листья-подложка вокруг купола */}
+      {leaves.map((l, i) => (
+        <g key={`leaf-${i}`} transform={`translate(${l.x},${l.y}) rotate(${l.rotate}) scale(${l.scale})`}>
+          <motion.g
+            style={{ transformBox: 'fill-box', transformOrigin: 'bottom center' }}
+            initial={animated ? { scale: 0, opacity: 0 } : false}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.2 + i * 0.04, type: 'spring', stiffness: 130, damping: 15 }}
+          >
+            <path d="M0,0 Q-13,-16 -11,-34 Q-5,-46 0,-48 Q5,-46 11,-34 Q13,-16 0,0 Z"
+              fill={l.fill} opacity={0.9} />
+            <path d="M0,-4 L0,-42" stroke="#6B8A6B" strokeWidth={1.4} opacity={0.7} />
+          </motion.g>
+        </g>
       ))}
 
-      {/* крафт-обёртка */}
+      {/* стебли — почти скрыты обёрткой */}
+      {bloomInstances.map((inst) => (
+        <path key={`s-${inst.key}`}
+          d={`M${inst.x},${inst.y + 10} Q ${(inst.x + BIND.x) / 2 + (inst.x - 200) * 0.1},${(inst.y + BIND.y) / 2} ${BIND.x + (inst.x - 200) * 0.1},${BIND.y}`}
+          stroke="#5E8A5A" strokeWidth={2.8} fill="none" opacity={0.9} />
+      ))}
+
+      {/* мягкая крафт-обёртка */}
       <g>
-        <path d="M96,296 L304,296 L212,508 L188,508 Z" fill="url(#kraft)" stroke="#B08D5C" strokeWidth={1.6} />
-        <path d="M96,296 L172,296 L188,508 Z" fill="url(#kraftFold)" opacity={0.65} />
-        <path d="M304,296 L228,296 L212,508 Z" fill="url(#kraftFold)" opacity={0.45} />
-        <path d="M96,296 L200,330 L304,296 L200,272 Z" fill="#E2C89A" stroke="#B08D5C" strokeWidth={1.2} />
-        {/* бечёвка */}
-        <path d="M150,318 Q200,336 250,318" stroke="#8A6A42" strokeWidth={3} fill="none" />
-        <path d="M200,327 q-10,16 -4,30 M200,327 q10,16 4,30" stroke="#8A6A42" strokeWidth={2.4} fill="none" />
-        <circle cx={200} cy={327} r={4.6} fill="#8A6A42" />
+        <path d="M104,262 Q200,236 296,262 L240,436 Q200,452 160,436 Z"
+          fill="url(#kraft)" stroke="#B08D5C" strokeWidth={1.6} />
+        {/* левый и правый загибы бумаги */}
+        <path d="M104,262 Q150,252 182,262 L168,434 Q160,438 152,432 Z"
+          fill="#B99766" opacity={0.4} />
+        <path d="M296,262 Q250,252 218,262 L232,434 Q240,438 248,432 Z"
+          fill="#B99766" opacity={0.3} />
+        {/* верхняя кромка-отворот */}
+        <path d="M104,262 Q200,236 296,262 Q200,290 104,262 Z" fill="url(#kraftLip)"
+          stroke="#B08D5C" strokeWidth={1.2} />
+        {/* бечёвка с бантиком */}
+        <path d="M146,306 Q200,322 254,306" stroke="#8A6A42" strokeWidth={3} fill="none" />
+        <path d="M200,314 q-14,-12 -22,-2 q6,12 22,2 Z" fill="#8A6A42" />
+        <path d="M200,314 q14,-12 22,-2 q-6,12 -22,2 Z" fill="#8A6A42" />
+        <path d="M200,314 q-8,20 -14,30 M200,314 q8,20 14,30" stroke="#8A6A42" strokeWidth={2.4}
+          fill="none" strokeLinecap="round" />
+        <circle cx={200} cy={314} r={4.4} fill="#7A5C38" />
       </g>
 
-      {/* цветы — расцветают по очереди */}
-      {sorted.filter((i) => !i.greenery).map((inst, idx) => {
+      {/* цветы — расцветают по очереди, нижние поверх */}
+      {bloomInstances.map((inst, idx) => {
         const f = FLOWER_BY_ID[inst.flowerId]
         const Shape = SHAPES[f.shape]
         return (
@@ -171,7 +207,7 @@ export default function BouquetSVG({ flowers, palette, style, seed, animated = t
               style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
               initial={animated ? { scale: 0, opacity: 0 } : false}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.5 + idx * 0.08, type: 'spring', stiffness: 160, damping: 13 }}
+              transition={{ delay: 0.45 + idx * 0.08, type: 'spring', stiffness: 150, damping: 13 }}
             >
               <Shape palette={resolveColors(inst.flowerId, idx)} seed={inst.key} />
             </motion.g>
